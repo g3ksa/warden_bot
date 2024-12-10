@@ -1,0 +1,16 @@
+version: "3"
+
+services:
+  db-warden-bot:
+    image: postgres
+    restart: always
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+      POSTGRES_DB: warden_bot
+    ports:
+      - "5435:5432"
+    volumes:
+      - db-warden-bot-data:/var/lib/postgresql/data
+volumes:
+  db-warden-bot-data:

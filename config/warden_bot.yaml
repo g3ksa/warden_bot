@@ -1,0 +1,11 @@
+service:
+   http_addr: ':5051'
+   cron_schedule: '10 0 * * *'
+   model_service_url: ''
+   bot_token: ''
+database:
+   host: 'localhost'
+   port: '5435'
+   db_user: 'user'
+   db_password: 'pass'
+   db_name: 'warden_bot'
