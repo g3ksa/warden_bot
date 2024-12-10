@@ -1,0 +1,69 @@
+package storage
+
+import (
+	"context"
+	"errors"
+	"fmt"
+
+	"github.com/g3ksa/warden_bot/internal/warden_bot/service/model"
+	"gorm.io/gorm"
+)
+
+type DBStorage struct {
+	db *gorm.DB
+}
+
+func NewDBStorage(db *gorm.DB) *DBStorage {
+	return &DBStorage{db: db}
+}
+
+func (s *DBStorage) PutMessage(ctx context.Context, message *model.Message) error {
+	err := s.db.Create(message).Error
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *DBStorage) UpdateMessages(ctx context.Context, messages []*model.Message) error {
+	for _, msg := range messages {
+		updates := make(map[string]interface{})
+
+		updates["label"] = msg.Label
+
+		if err := s.db.
+			WithContext(ctx).
+			Model(&model.Message{}).
+			Where("message_id = ? and chat_id = ?", msg.MessageID, msg.ChatID).
+			Updates(updates).Error; err != nil {
+			return fmt.Errorf("failed to update message ID %d: %w", msg.MessageID, err)
+		}
+	}
+	return nil
+}
+
+func (s *DBStorage) GetMessagesForLastDay(ctx context.Context) ([]model.Message, error) {
+	messages := make([]model.Message, 0)
+	err := s.db.WithContext(ctx).Where("date >= now() - interval '1 day'").Find(&messages).Error
+	if err != nil {
+		return nil, err
+	}
+	return messages, nil
+}
+
+func (s *DBStorage) SaveChatInfo(ctx context.Context, chatInfo *model.Chat) error {
+	err := s.db.Create(chatInfo).Error
+	if err != nil && !errors.Is(err, gorm.ErrDuplicatedKey) {
+		return err
+	}
+	return nil
+}
+
+func (s *DBStorage) GetGroupChats(ctx context.Context) ([]model.Chat, error) {
+	chats := make([]model.Chat, 0)
+	err := s.db.WithContext(ctx).Where("type LIKE ?", "%group%").Find(&chats).Error
+	if err != nil {
+		return nil, err
+	}
+	return chats, nil
+}
