@@ -8,9 +8,11 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/g3ksa/warden_bot/internal/warden_bot/service/model"
+	"github.com/g3ksa/warden_bot/internal/warden_bot/service/report"
 	"github.com/g3ksa/warden_bot/internal/warden_bot/service/state"
 	"github.com/g3ksa/warden_bot/internal/warden_bot/service/storage"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
@@ -20,7 +22,8 @@ type WardenBotService struct {
 	tgBot           *tgbotapi.BotAPI
 	storage         *storage.DBStorage
 	modelServiceUrl string
-	botState        state.BotState
+	botState        *state.BotState
+	reportGenerator *report.ReportGenerator
 }
 
 func NewWardenBotService(modelServiceUrl string, bot *tgbotapi.BotAPI, storage *storage.DBStorage) *WardenBotService {
@@ -28,7 +31,8 @@ func NewWardenBotService(modelServiceUrl string, bot *tgbotapi.BotAPI, storage *
 		tgBot:           bot,
 		storage:         storage,
 		modelServiceUrl: modelServiceUrl,
-		botState:        *state.NewBotState(),
+		botState:        state.NewBotState(),
+		reportGenerator: report.NewReportGenerator(storage),
 	}
 }
 
@@ -52,7 +56,7 @@ func (s *WardenBotService) ProcessUpdatesFromBot(ctx context.Context) error {
 				msg := &model.Message{
 					MessageID:    uint64(update.Message.MessageID),
 					UserFullName: fmt.Sprintf("%s %s", update.Message.From.FirstName, update.Message.From.LastName),
-					Text:         update.Message.Text,
+					Text:         strings.ReplaceAll(update.Message.Text, "\n", " "),
 					Date:         time.Unix(int64(update.Message.Date), 0),
 					Label:        0,
 					ChatID:       uint64(math.Abs((float64(update.Message.Chat.ID)))),
@@ -66,13 +70,15 @@ func (s *WardenBotService) ProcessUpdatesFromBot(ctx context.Context) error {
 
 				userID := update.Message.From.ID
 
-				switch update.Message.Text {
-				case "/report":
+				switch update.Message.Command() {
+				case "report":
 					s.processReportCommand(ctx, update.Message, userID)
+				case "help":
+					s.processHelpCommand(ctx, update.Message.Chat.ID)
 				default:
 					currentState, exists := s.botState.GetUserState(userID)
 
-					if exists && currentState == "awaiting_chat_selection" {
+					if exists {
 						selectedText := update.Message.Text
 
 						var chatID uint64
@@ -85,8 +91,20 @@ func (s *WardenBotService) ProcessUpdatesFromBot(ctx context.Context) error {
 
 						s.botState.ClearUserState(userID)
 
-						msg := tgbotapi.NewMessage(update.Message.Chat.ID, fmt.Sprintf("Вы выбрали чат: %d", chatID))
-						msg.ReplyMarkup = tgbotapi.NewRemoveKeyboard(true)
+						report, err := s.reportGenerator.GenerateReport(ctx, chatID, currentState)
+						if err != nil {
+							log.Printf("Failed to generate report: %v", err)
+							msg := tgbotapi.NewMessage(update.Message.Chat.ID, "Произошла ошибка при генерации отчета.")
+							s.tgBot.Send(msg)
+							continue
+						}
+
+						reportMsg := report.String()
+						chatId := update.Message.Chat.ID
+
+						msg := tgbotapi.NewMessage(chatId, reportMsg)
+						msg.ParseMode = "Markdown"
+						//msg.ReplyMarkup = tgbotapi.NewRemoveKeyboard(true)
 						s.tgBot.Send(msg)
 					}
 				}
@@ -95,6 +113,13 @@ func (s *WardenBotService) ProcessUpdatesFromBot(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (s *WardenBotService) processHelpCommand(ctx context.Context, chatID int64) {
+	msg := tgbotapi.NewMessage(chatID, "Доступные команды:\n\n"+
+		"/report [YYYY-MM-DD] - создать отчет (по умолчанию за предыдущий день)\n"+
+		"/help - помощь")
+	s.tgBot.Send(msg)
 }
 
 func (s *WardenBotService) processReportCommand(ctx context.Context, message *tgbotapi.Message, userID int) {
@@ -117,7 +142,22 @@ func (s *WardenBotService) processReportCommand(ctx context.Context, message *tg
 		return
 	}
 
-	s.botState.SetUserState(userID, "awaiting_chat_selection")
+	commandArgs := strings.Split(message.CommandArguments(), " ")[0]
+
+	var reportDate time.Time
+
+	if commandArgs != "" {
+		reportDate, err = time.Parse("2006-01-02", commandArgs)
+		if err != nil {
+			msg := tgbotapi.NewMessage(message.Chat.ID, "Некорректный формат даты. Используйте формат YYYY-MM-DD.")
+			s.tgBot.Send(msg)
+			return
+		}
+	} else {
+		reportDate = time.Now().Truncate(24 * time.Hour)
+	}
+
+	s.botState.SetUserState(userID, reportDate)
 
 	keyboard := tgbotapi.NewReplyKeyboard(buttons)
 	keyboard.OneTimeKeyboard = true

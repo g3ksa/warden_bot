@@ -47,7 +47,7 @@ func main() {
 		log.Panic(err)
 	}
 
-	bot.Debug = false
+	bot.Debug = true
 	slog.Info("Authorized on account:", slog.String("username", bot.Self.UserName))
 
 	dbStorage := storage.NewDBStorage(db)

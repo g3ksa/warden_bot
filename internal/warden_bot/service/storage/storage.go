@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/g3ksa/warden_bot/internal/warden_bot/service/model"
 	"gorm.io/gorm"
@@ -66,4 +67,26 @@ func (s *DBStorage) GetGroupChats(ctx context.Context) ([]model.Chat, error) {
 		return nil, err
 	}
 	return chats, nil
+}
+
+func (s *DBStorage) GetMessagesByChatAndPeriod(ctx context.Context, chatID uint64, date time.Time) ([]*model.Message, error) {
+	messages := make([]*model.Message, 0)
+
+	truncatedDate := date.Truncate(24 * time.Hour)
+	dateString := truncatedDate.Format("2006-01-02")
+
+	err := s.db.WithContext(ctx).Where("chat_id = ? and DATE(date) = ?", chatID, dateString).Find(&messages).Error
+	if err != nil {
+		return nil, err
+	}
+	return messages, nil
+}
+
+func (s *DBStorage) GetChatInfoByID(ctx context.Context, chatID uint64) (*model.Chat, error) {
+	chat := model.Chat{}
+	err := s.db.WithContext(ctx).Where("chat_id = ?", chatID).Find(&chat).Error
+	if err != nil {
+		return nil, err
+	}
+	return &chat, nil
 }
