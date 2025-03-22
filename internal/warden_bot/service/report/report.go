@@ -4,17 +4,16 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/g3ksa/warden_bot/internal/warden_bot/service/storage"
 )
 
 type ReportGenerator struct {
-	storage *storage.DBStorage
+	storage storage.Storage
 }
 
-func NewReportGenerator(storage *storage.DBStorage) *ReportGenerator {
+func NewReportGenerator(storage storage.Storage) *ReportGenerator {
 	return &ReportGenerator{
 		storage,
 	}
@@ -70,7 +69,7 @@ func (g *ReportGenerator) GenerateReport(ctx context.Context, chatID uint64, dat
 			productiveMessages++
 		} else if msg.Label == 0 { // Label 0 - непродуктивное сообщение
 			unproductiveMessages++
-			unproductiveSamples = append(unproductiveSamples, fmt.Sprintf("%s: %s", strings.TrimSpace(msg.UserFullName), msg.Text))
+			unproductiveSamples = append(unproductiveSamples, msg.Text)
 			userActivity[msg.UserFullName]++
 			timeline[msg.Date.Truncate(time.Hour)]++ // Группировка по часам
 		}

@@ -10,6 +10,16 @@ import (
 	"gorm.io/gorm"
 )
 
+type Storage interface {
+	PutMessage(ctx context.Context, message *model.Message) error
+	UpdateMessages(ctx context.Context, messages []*model.Message) error
+	GetMessagesForLastDayByChat(ctx context.Context, chatID uint64) ([]model.Message, error)
+	SaveChatInfo(ctx context.Context, chatInfo *model.Chat) error
+	GetGroupChats(ctx context.Context) ([]model.Chat, error)
+	GetMessagesByChatAndPeriod(ctx context.Context, chatID uint64, date time.Time) ([]*model.Message, error)
+	GetChatInfoByID(ctx context.Context, chatID uint64) (*model.Chat, error)
+}
+
 type DBStorage struct {
 	db *gorm.DB
 }
@@ -43,9 +53,9 @@ func (s *DBStorage) UpdateMessages(ctx context.Context, messages []*model.Messag
 	return nil
 }
 
-func (s *DBStorage) GetMessagesForLastDay(ctx context.Context) ([]model.Message, error) {
+func (s *DBStorage) GetMessagesForLastDayByChat(ctx context.Context, chatID uint64) ([]model.Message, error) {
 	messages := make([]model.Message, 0)
-	err := s.db.WithContext(ctx).Where("date >= now() - interval '1 day'").Find(&messages).Error
+	err := s.db.WithContext(ctx).Where("date >= now() - interval '1 day' AND chat_id = ?", chatID).Order("date").Find(&messages).Error
 	if err != nil {
 		return nil, err
 	}

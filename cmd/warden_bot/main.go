@@ -47,7 +47,7 @@ func main() {
 		log.Panic(err)
 	}
 
-	bot.Debug = true
+	bot.Debug = false
 	slog.Info("Authorized on account:", slog.String("username", bot.Self.UserName))
 
 	dbStorage := storage.NewDBStorage(db)
@@ -70,7 +70,12 @@ func main() {
 
 	cron.StartAsync()
 
-	go wardenBotservice.ProcessUpdatesFromBot(ctx)
+	go func() {
+		err := wardenBotservice.ProcessUpdatesFromBot(ctx)
+		if err != nil {
+			log.Panic(err)
+		}
+	}()
 
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
