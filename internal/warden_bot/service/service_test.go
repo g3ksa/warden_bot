@@ -4,53 +4,14 @@ import (
 	"context"
 	"errors"
 	"github.com/g3ksa/warden_bot/mocks/bot"
+	"github.com/g3ksa/warden_bot/mocks/storage"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
-	"github.com/stretchr/testify/mock"
 	"testing"
 	"time"
 
 	"github.com/g3ksa/warden_bot/internal/warden_bot/service/model"
 	"github.com/stretchr/testify/assert"
 )
-
-type MockStorage struct {
-	mock.Mock
-}
-
-func (m *MockStorage) PutMessage(ctx context.Context, message *model.Message) error {
-	args := m.Called(ctx, message)
-	return args.Error(0)
-}
-
-func (m *MockStorage) UpdateMessages(ctx context.Context, messages []*model.Message) error {
-	args := m.Called(ctx, messages)
-	return args.Error(0)
-}
-
-func (m *MockStorage) GetMessagesForLastDayByChat(ctx context.Context, chatID uint64) ([]model.Message, error) {
-	args := m.Called(ctx, chatID)
-	return args.Get(0).([]model.Message), args.Error(1)
-}
-
-func (m *MockStorage) SaveChatInfo(ctx context.Context, chatInfo *model.Chat) error {
-	args := m.Called(ctx, chatInfo)
-	return args.Error(0)
-}
-
-func (m *MockStorage) GetGroupChats(ctx context.Context) ([]model.Chat, error) {
-	args := m.Called(ctx)
-	return args.Get(0).([]model.Chat), args.Error(1)
-}
-
-func (m *MockStorage) GetMessagesByChatAndPeriod(ctx context.Context, chatID uint64, date time.Time) ([]*model.Message, error) {
-	args := m.Called(ctx, chatID, date)
-	return args.Get(0).([]*model.Message), args.Error(1)
-}
-
-func (m *MockStorage) GetChatInfoByID(ctx context.Context, chatID uint64) (*model.Chat, error) {
-	args := m.Called(ctx, chatID)
-	return args.Get(0).(*model.Chat), args.Error(1)
-}
 
 func TestSaveMessage(t *testing.T) {
 	ctx := context.Background()
@@ -146,8 +107,38 @@ func TestGetAdminChats(t *testing.T) {
 	})
 }
 
-func setupTest() (*MockStorage, *bot.MockTgBotAPI, *WardenBotService) {
-	mockStorage := new(MockStorage)
+func TestClassifyMessages(t *testing.T) {
+	ctx := context.Background()
+	testMessage := &model.Message{
+		MessageID:    1,
+		UserFullName: "John Doe",
+		Text:         "Hello, World!",
+		Date:         time.Now(),
+		Label:        0,
+		ChatID:       123,
+	}
+
+	t.Run("Big messages", func(t *testing.T) {
+		mockStorage, _, wardenBotService := setupTest()
+
+		mockStorage.On("PutMessage", ctx, testMessage).Return(errors.New("mocked error"))
+		err := wardenBotService.SaveMessage(ctx, testMessage)
+
+		assert.NoError(t, err)
+	})
+
+	t.Run("Small messages", func(t *testing.T) {
+		mockStorage, _, wardenBotService := setupTest()
+
+		mockStorage.On("PutMessage", ctx, testMessage).Return(errors.New("connection lost"))
+		err := wardenBotService.SaveMessage(ctx, testMessage)
+
+		assert.NoError(t, err)
+	})
+}
+
+func setupTest() (*storage.MockStorage, *bot.MockTgBotAPI, *WardenBotService) {
+	mockStorage := new(storage.MockStorage)
 	mockTgBot := new(bot.MockTgBotAPI)
 	wardenBotService := &WardenBotService{
 		tgBot:   mockTgBot,
